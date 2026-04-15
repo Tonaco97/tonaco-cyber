@@ -1,0 +1,24 @@
+# exemplo_v1_legado.tns
+# Sintaxe v1 pura — funciona no compilador v2 via SimilarityTranslator
+# Use: java ... TonacoCompiler --translate scripts/exemplo_v1_legado.tns
+# para ver como é traduzido para v2 antes de executar
+
+escrever "Testando compatibilidade v1 no compilador v2"
+
+variavel site = "https://tonaco.cyber"
+variavel modo = "completo"
+
+escrever "Site: " + site
+escrever "Modo: " + modo
+
+se (modo == "completo") {
+    escrever "Iniciando varredura completa..."
+    buscar site
+    analisar site
+    relatorio html
+} senao {
+    escrever "Modo rápido ativado"
+    buscar site
+}
+
+escrever "Compatibilidade v1 confirmada!"
