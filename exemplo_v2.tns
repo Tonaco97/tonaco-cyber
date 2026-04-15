@@ -1,25 +1,65 @@
-// exemplo_v2.tns
-// Demonstração da nova sintaxe
+// exemplo_v2.tns — Demonstração da sintaxe v2 moderna
+// Criado por: Guilherme Lucas Tonaco Carvalho
 
-let nome = "TONACO SCRIPT";
-let versao = 2;
-let ativo = true;
+// === Variáveis com tipo hint (opcional) ===
+let nome:string = "TONACO SCRIPT"
+let versao:int  = 2
+let ativo:bool  = verdadeiro
 
-print "Bem vindo ao " + nome + " versao " + versao;
+print "Bem-vindo ao " + nome + " versão " + versao
 
+// === Condicionais ===
 if (ativo) {
-    print "Sistema ativo";
+    print "Sistema ativo e funcional."
 } else {
-    print "Sistema inativo";
+    print "Sistema inativo."
 }
 
-let contador = 0;
-while (contador < 3) {
-    print "Iteracao: " + contador;
-    contador = contador + 1;
+// === For loop ===
+print ""
+print "Contagem progressiva:"
+for (let i = 0; i < 5; i = i + 1) {
+    print "  → " + i
 }
 
-// Comandos TNS
-scan "https://exemplo.com", 3;
-analyze "https://exemplo.com";
-report html;
+// === While loop ===
+print ""
+let x = 10
+while (x > 0) {
+    x = x - 3
+}
+print "x após loop: " + x
+
+// === Funções ===
+function maximo(a, b) {
+    if (a > b) {
+        return a
+    }
+    return b
+}
+
+function fib(n) {
+    if (n <= 1) { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+let maior = maximo(42, 17)
+print ""
+print "Máximo(42, 17) = " + maior
+
+print "Fibonacci(8) = " + fib(8)
+
+// === Comandos TNS ===
+print ""
+print "=== Modo Segurança ==="
+let alvo = "https://exemplo.com"
+
+scan alvo
+deepscan alvo, 2
+analyze alvo
+download alvo + "/wordlist.txt", "./wordlists/"
+github "https://github.com/Tonaco97/tonaco-cyber"
+report json
+
+print ""
+print "Execução v2 concluída!"
