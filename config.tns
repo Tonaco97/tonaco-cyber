@@ -1,0 +1,26 @@
+// config.tns - Configuração da linguagem TONACO SCRIPT
+
+# CONFIGURAÇÕES GLOBAIS
+config timeout = 5000
+config max_threads = 20
+config user_agent = "TONACO-SCRIPT/1.0"
+
+# EXTENSÕES PARA BUSCAR
+extensoes = [
+    ".php", ".jsp", ".asp", ".aspx", ".html", ".htm",
+    ".js", ".css", ".xml", ".json", ".txt", ".log",
+    ".sql", ".bak", ".zip", ".tar", ".gz", ".java",
+    ".py", ".rb", ".go", ".c", ".cpp", ".class", ".jar"
+]
+
+# DIRETÓRIOS COMUNS
+diretorios = [
+    "", "/admin", "/backup", "/temp", "/logs", "/config",
+    "/WEB-INF", "/api", "/v1", "/old", "/download", "/files"
+]
+
+# PALAVRAS SENSÍVEIS
+palavras_sensiveis = [
+    "password", "secret", "key", "token", "api_key",
+    "database", "db", "backup", "dump", "credential"
+]

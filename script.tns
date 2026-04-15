@@ -1,0 +1,61 @@
+// script.tns - Exemplo de programa na linguagem TONACO SCRIPT
+// Criado por: Tonaco Cyber
+
+# ============================================
+# CONFIGURAÇÕES INICIAIS
+# ============================================
+
+escrever "╔════════════════════════════════════════════════════╗"
+escrever "║     TONACO SCRIPT - Script de Automação Web       ║"
+escrever "╚════════════════════════════════════════════════════╝"
+escrever ""
+
+# ============================================
+# VARIÁVEIS
+# ============================================
+
+variavel alvo = "https://exemplo.com.br"
+variavel profundidade = 3
+variavel relatorio_formato = "html"
+
+# ============================================
+# BUSCA AUTOMÁTICA DE ARQUIVOS
+# ============================================
+
+escrever "🔍 Iniciando busca automática em: " + alvo
+buscar alvo
+
+# ============================================
+# SCAN PROFUNDO
+# ============================================
+
+escrever ""
+escrever "🔎 Escaneando links recursivamente..."
+scanear alvo --profundidade 3
+
+# ============================================
+# ANÁLISE DO SITE
+# ============================================
+
+escrever ""
+escrever "📊 Analisando segurança do site..."
+analisar alvo
+
+# ============================================
+# INTEGRAÇÃO COM GITHUB
+# ============================================
+
+escrever ""
+escrever "📦 Integrando com GitHub..."
+github "https://github.com/tonaco97/tonaco-cyber"
+
+# ============================================
+# GERAR RELATÓRIO
+# ============================================
+
+escrever ""
+escrever "📝 Gerando relatório final..."
+relatorio html
+
+escrever ""
+escrever "✅ SCRIPT CONCLUÍDO COM SUCESSO!"
