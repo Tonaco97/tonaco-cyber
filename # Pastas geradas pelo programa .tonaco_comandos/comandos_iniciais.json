@@ -1,0 +1,12 @@
+{
+  "pingweb": {
+    "nome": "pingweb",
+    "descricao": "Verifica se um site está online",
+    "acao": "curl -s -o /dev/null -w '%{http_code}' {param}",
+    "criador": "comunidade",
+    "dataCriacao": 1702684800000,
+    "hash": "abc123",
+    "votos": 5,
+    "downloads": 12
+  }
+}
