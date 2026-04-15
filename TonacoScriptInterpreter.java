@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 import com.google.gson.*;
 
 public class TonacoScriptInterpreter {
-    
+    private static AutoEvolucao autoEvolucao = new AutoEvolucao();
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private static Map<String, Object> variables = new HashMap<>();
     private static Map<String, String> config = new HashMap<>();
@@ -402,19 +402,20 @@ public class TonacoScriptInterpreter {
         
         System.out.println("\n✅ Execução concluída!");
     }
-    
-    private static void executarComando(String comando, int linhaNum) {
+     private static void executarComando(String comando, int linhaNum) {
         try {
             // Comando: buscar [url]
             if (comando.startsWith("buscar ")) {
                 String url = comando.substring(7).trim();
                 autoBuscarArquivos(url);
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: github [repo]
             else if (comando.startsWith("github ")) {
                 String repo = comando.substring(7).trim();
                 integrarGitHub(repo);
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: escrever [texto]
@@ -422,6 +423,7 @@ public class TonacoScriptInterpreter {
                 String texto = comando.substring(9).trim();
                 System.out.println(texto);
                 output.add(texto);
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: variavel [nome] = [valor]
@@ -435,6 +437,7 @@ public class TonacoScriptInterpreter {
                     valor = valor.substring(1, valor.length() - 1);
                 }
                 variables.put(nomeVar, valor);
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: imprimir [variavel]
@@ -445,6 +448,7 @@ public class TonacoScriptInterpreter {
                 } else {
                     System.out.println(var);
                 }
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: scanear [url] --profundidade [n]
@@ -454,11 +458,12 @@ public class TonacoScriptInterpreter {
                 String url = partes[0].trim();
                 int profundidade = partes.length > 1 ? Integer.parseInt(partes[1].trim()) : 2;
                 
-                System.out.println("🔍 Escaneando " + url + " com profundidade " + profundidade);
+                System.out.println("Escaneando " + url + " com profundidade " + profundidade);
                 Set<String> links = buscarLinksRecursivos(url, profundidade);
                 for (String link : links) {
-                    System.out.println("   🔗 " + link);
+                    System.out.println("   " + link);
                 }
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: baixar [url] [destino]
@@ -470,35 +475,105 @@ public class TonacoScriptInterpreter {
                 
                 try (InputStream in = new URL(url).openStream()) {
                     Files.copy(in, Path.of(destino), StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println("✅ Baixado: " + url + " -> " + destino);
+                    System.out.println("Baixado: " + url + " -> " + destino);
                 } catch (Exception e) {
-                    System.out.println("❌ Erro ao baixar: " + e.getMessage());
+                    System.out.println("Erro ao baixar: " + e.getMessage());
                 }
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: analisar [url]
             else if (comando.startsWith("analisar ")) {
                 String url = comando.substring(9).trim();
                 analisarSite(url);
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
             // Comando: relatorio [formato]
             else if (comando.startsWith("relatorio ")) {
                 String formato = comando.substring(10).trim();
                 gerarRelatorio(formato);
+                autoEvolucao.registrarUso(comando, true, 0);
             }
             
+            // ============================================================
+            // NOVOS COMANDOS DE AUTO-EVOLUCAO
+            // ============================================================
+            
+            // Comando: sincronizar
+            else if (comando.equals("sincronizar")) {
+                autoEvolucao.sincronizarComandos();
+                autoEvolucao.registrarUso(comando, true, 0);
+            }
+            
+            // Comando: criar_comando [nome] [descricao] [acao]
+            else if (comando.startsWith("criar_comando ")) {
+                String resto = comando.substring(14).trim();
+                String[] partes = resto.split(" ", 3);
+                if (partes.length >= 3) {
+                    autoEvolucao.compartilharComando(partes[0], partes[1], partes[2]);
+                } else {
+                    System.out.println("Uso: criar_comando [nome] [descricao] [acao]");
+                    System.out.println("Exemplo: criar_comando ping \"Verifica site\" analisar https://exemplo.com");
+                }
+                autoEvolucao.registrarUso(comando, true, 0);
+            }
+            
+            // Comando: compartilhar [nome]
+            else if (comando.startsWith("compartilhar ")) {
+                String nome = comando.substring(12).trim();
+                autoEvolucao.compartilharComComunidade(nome);
+                autoEvolucao.registrarUso(comando, true, 0);
+            }
+            
+            // Comando: relatorio_evolucao
+            else if (comando.equals("relatorio_evolucao")) {
+                String relatorio = autoEvolucao.gerarRelatorioEvolucao();
+                System.out.println(relatorio);
+                try {
+                    Files.writeString(Path.of("evolucao_" + System.currentTimeMillis() + ".json"), relatorio);
+                    System.out.println("Relatorio salvo.");
+                } catch (Exception e) {
+                    System.out.println("Erro ao salvar relatorio: " + e.getMessage());
+                }
+                autoEvolucao.registrarUso(comando, true, 0);
+            }
+            
+            // Comando: recomendar
+            else if (comando.equals("recomendar")) {
+                autoEvolucao.recomendarComandos();
+                autoEvolucao.registrarUso(comando, true, 0);
+            }
+            
+            // Comando: comandos
+            else if (comando.equals("comandos")) {
+                autoEvolucao.listarComandos();
+                autoEvolucao.registrarUso(comando, true, 0);
+            }
+            
+            // ============================================================
+            // COMANDOS PERSONALIZADOS (FALLBACK)
+            // ============================================================
             else {
-                System.out.println("⚠️ Linha " + linhaNum + ": Comando desconhecido: " + comando);
+                // Tenta executar como comando personalizado
+                String primeiro = comando.split(" ")[0];
+                String parametros = comando.substring(primeiro.length()).trim();
+                if (autoEvolucao.executarComandoPersonalizado(primeiro, parametros)) {
+                    autoEvolucao.registrarUso(comando, true, 0);
+                } else {
+                    System.out.println("Linha " + linhaNum + ": Comando desconhecido: " + comando);
+                    autoEvolucao.registrarUso(comando, false, 0);
+                }
             }
             
         } catch (Exception e) {
-            System.out.println("❌ Erro na linha " + linhaNum + ": " + e.getMessage());
+            System.out.println("Erro na linha " + linhaNum + ": " + e.getMessage());
+            autoEvolucao.registrarUso(comando, false, 0);
         }
     }
     
-    private static void analisarSite(String url) {
-        System.out.println("🔍 Analisando site: " + url);
+       private static void analisarSite(String url) {
+        System.out.println("Analisando site: " + url);
         
         Map<String, Object> analise = new LinkedHashMap<>();
         analise.put("url", url);
@@ -512,13 +587,13 @@ public class TonacoScriptInterpreter {
             analise.put("content_type", conn.getContentType());
             analise.put("content_length", conn.getContentLength());
             
-            // Headers de segurança
+            // Headers de seguranca
             Map<String, String> headers = new LinkedHashMap<>();
             String[] securityHeaders = {"Strict-Transport-Security", "X-Content-Type-Options", 
                                        "X-Frame-Options", "Content-Security-Policy"};
             for (String h : securityHeaders) {
                 String val = conn.getHeaderField(h);
-                headers.put(h, val != null ? "✅" : "❌");
+                headers.put(h, val != null ? "presente" : "ausente");
             }
             analise.put("security_headers", headers);
             
@@ -529,7 +604,7 @@ public class TonacoScriptInterpreter {
             System.out.println(gson.toJson(analise));
             
         } catch (Exception e) {
-            System.out.println("❌ Erro na análise: " + e.getMessage());
+            System.out.println("Erro na analise: " + e.getMessage());
         }
     }
     
@@ -543,25 +618,25 @@ public class TonacoScriptInterpreter {
         if (formato.equals("json")) {
             try {
                 Files.writeString(Path.of("relatorio_final.json"), gson.toJson(relatorio));
-                System.out.println("✅ Relatório JSON gerado: relatorio_final.json");
+                System.out.println("Relatorio JSON gerado: relatorio_final.json");
             } catch (IOException e) {
-                System.out.println("❌ Erro: " + e.getMessage());
+                System.out.println("Erro: " + e.getMessage());
             }
         } else if (formato.equals("html")) {
             StringBuilder html = new StringBuilder();
-            html.append("<!DOCTYPE html><html><head><title>Relatório TNS</title>");
+            html.append("<!DOCTYPE html><html><head><title>Relatorio TNS</title>");
             html.append("<style>body{background:#0a0a0a;color:#00ff88;font-family:monospace;padding:20px;}</style>");
-            html.append("</head><body><h1>📊 RELATÓRIO TONACO SCRIPT</h1>");
+            html.append("</head><body><h1>RELATORIO TONACO SCRIPT</h1>");
             html.append("<p>Data: ").append(LocalDateTime.now()).append("</p>");
-            html.append("<h2>Variáveis</h2><pre>").append(gson.toJson(variables)).append("</pre>");
+            html.append("<h2>Variaveis</h2><pre>").append(gson.toJson(variables)).append("</pre>");
             html.append("<h2>Output</h2><pre>").append(String.join("\n", output)).append("</pre>");
             html.append("</body></html>");
             
             try {
                 Files.writeString(Path.of("relatorio_final.html"), html.toString());
-                System.out.println("✅ Relatório HTML gerado: relatorio_final.html");
+                System.out.println("Relatorio HTML gerado: relatorio_final.html");
             } catch (IOException e) {
-                System.out.println("❌ Erro: " + e.getMessage());
+                System.out.println("Erro: " + e.getMessage());
             }
         }
     }
