@@ -1,5 +1,5 @@
 // Bytecode.java
-// Código de bytes e VM do TONACO SCRIPT
+// Compilador de bytecode e Máquina Virtual do TONACO SCRIPT v2.0
 // Criado por: Guilherme Lucas Tonaco Carvalho
 
 package com.tonaco.tns;
@@ -10,26 +10,38 @@ import java.util.*;
 // OPCODES
 // ============================================================
 
-public enum OpCode {
-    // Pilha
-    PUSH_INT, PUSH_STRING, PUSH_BOOL, PUSH_VAR,
-    POP, STORE_VAR, LOAD_VAR,
-    
-    // Operações
+enum OpCode {
+    // Stack
+    PUSH_INT, PUSH_FLOAT, PUSH_STRING, PUSH_BOOL, PUSH_NULL,
+    PUSH_VAR, POP, DUP,
+
+    // Variáveis
+    STORE_VAR, LOAD_VAR,
+
+    // Operações aritméticas
     ADD, SUB, MUL, DIV, MOD,
+
+    // Operações relacionais / lógicas
     EQ, NEQ, LT, GT, LE, GE,
     AND, OR, NOT,
-    
-    // Controle
-    JMP, JMP_IF_FALSE, CALL, RET,
-    
+
+    // Concatenação de strings
+    CONCAT,
+
+    // Controle de fluxo
+    JMP, JMP_IF_FALSE, JMP_IF_TRUE,
+
+    // Funções
+    CALL, RET, MAKE_FRAME, POP_FRAME,
+
     // Comandos TNS
-    TNS_SCAN, TNS_ANALYZE, TNS_REPORT, TNS_GITHUB, TNS_SYNC,
-    
-    // E/S
-    PRINT, PRINT_LN,
-    
-    // Utilitários
+    TNS_SCAN, TNS_DEEPSCAN, TNS_ANALYZE, TNS_DOWNLOAD,
+    TNS_GITHUB, TNS_REPORT, TNS_SYNC,
+
+    // I/O
+    PRINT, PRINTLN,
+
+    // Fim
     HALT
 }
 
@@ -37,23 +49,17 @@ public enum OpCode {
 // INSTRUÇÃO
 // ============================================================
 
-public class Instruction {
+class Instruction {
     public final OpCode opCode;
     public final Object operand;
-    
-    public Instruction(OpCode opCode) {
-        this(opCode, null);
-    }
-    
+
+    public Instruction(OpCode opCode)              { this(opCode, null); }
     public Instruction(OpCode opCode, Object operand) {
-        this.opCode = opCode;
-        this.operand = operand;
+        this.opCode = opCode; this.operand = operand;
     }
-    
-    @Override
-    public String toString() {
-        if (operand == null) return opCode.toString();
-        return opCode + " " + operand;
+
+    @Override public String toString() {
+        return operand == null ? opCode.name() : opCode.name() + " " + operand;
     }
 }
 
@@ -61,331 +67,452 @@ public class Instruction {
 // BYTECODE COMPILER
 // ============================================================
 
-public class BytecodeCompiler implements Visitor<List<Instruction>> {
-    private final List<Instruction> code = new ArrayList<>();
-    private final Map<String, Integer> varLocations = new HashMap<>();
-    private int nextVarSlot = 0;
-    
+class BytecodeCompiler implements Visitor<Void> {
+    private List<Instruction> code = new ArrayList<>();
+    // Mapa de funções: nome → índice de entrada
+    private Map<String, Integer> functionAddrs = new HashMap<>();
+    // Patches pendentes para CALL (resolvidos após compilar tudo)
+    private Map<Integer, String> callPatches = new HashMap<>();
+
     public List<Instruction> compile(ProgramNode program) {
-        code.addAll(program.accept(this));
-        code.add(new Instruction(OpCode.HALT));
+        // Primeira passagem: registra endereços de funções
+        for (ASTNode stmt : program.statements) {
+            if (stmt instanceof FunctionNode fn) {
+                functionAddrs.put(fn.name, -1); // placeholder
+            }
+        }
+        program.accept(this);
+        emit(OpCode.HALT);
+        patchCalls();
         return code;
     }
-    
-    @Override
-    public List<Instruction> visitProgramNode(ProgramNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        for (ASTNode stmt : node.statements) {
-            instructions.addAll(stmt.accept(this));
+
+    private void emit(OpCode op)              { code.add(new Instruction(op)); }
+    private void emit(OpCode op, Object operand) { code.add(new Instruction(op, operand)); }
+    private int here() { return code.size(); }
+
+    private int emitJump(OpCode op) {
+        code.add(new Instruction(op, -1)); // placeholder
+        return code.size() - 1;
+    }
+
+    private void patchJump(int idx) {
+        code.set(idx, new Instruction(code.get(idx).opCode, code.size()));
+    }
+
+    private void patchCalls() {
+        for (var entry : callPatches.entrySet()) {
+            int idx = entry.getKey();
+            String fnName = entry.getValue();
+            Integer addr = functionAddrs.get(fnName);
+            if (addr != null && addr >= 0) {
+                code.set(idx, new Instruction(OpCode.CALL, addr));
+            }
         }
-        return instructions;
     }
-    
-    @Override
-    public List<Instruction> visitPrintNode(PrintNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        instructions.addAll(node.expression.accept(this));
-        instructions.add(new Instruction(OpCode.PRINT_LN));
-        return instructions;
+
+    @Override public Void visitProgramNode(ProgramNode n) {
+        for (ASTNode s : n.statements) if (s != null) s.accept(this);
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitLetNode(LetNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        instructions.addAll(node.value.accept(this));
-        
-        int slot = varLocations.getOrDefault(node.name, nextVarSlot++);
-        varLocations.put(node.name, slot);
-        instructions.add(new Instruction(OpCode.STORE_VAR, slot));
-        
-        return instructions;
+
+    @Override public Void visitBlockNode(BlockNode n) {
+        for (ASTNode s : n.statements) if (s != null) s.accept(this);
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitVariableNode(VariableNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        Integer slot = varLocations.get(node.name);
-        if (slot == null) {
-            slot = nextVarSlot++;
-            varLocations.put(node.name, slot);
+
+    @Override public Void visitPrintNode(PrintNode n) {
+        n.expression.accept(this);
+        emit(OpCode.PRINTLN);
+        return null;
+    }
+
+    @Override public Void visitLetNode(LetNode n) {
+        n.value.accept(this);
+        emit(OpCode.STORE_VAR, n.name);
+        return null;
+    }
+
+    @Override public Void visitAssignNode(AssignNode n) {
+        n.value.accept(this);
+        emit(OpCode.STORE_VAR, n.name);
+        return null;
+    }
+
+    @Override public Void visitVariableNode(VariableNode n) {
+        emit(OpCode.LOAD_VAR, n.name);
+        return null;
+    }
+
+    @Override public Void visitStringNode(StringNode n)   { emit(OpCode.PUSH_STRING, n.value); return null; }
+    @Override public Void visitBooleanNode(BooleanNode n) { emit(OpCode.PUSH_BOOL, n.value);   return null; }
+    @Override public Void visitNullNode(NullNode n)       { emit(OpCode.PUSH_NULL);             return null; }
+
+    @Override public Void visitNumberNode(NumberNode n) {
+        if (n.value instanceof Double) emit(OpCode.PUSH_FLOAT, n.value);
+        else emit(OpCode.PUSH_INT, n.value);
+        return null;
+    }
+
+    @Override public Void visitBinaryNode(BinaryNode n) {
+        n.left.accept(this);
+        n.right.accept(this);
+        switch (n.operator) {
+            case PLUS    -> emit(OpCode.ADD);
+            case MINUS   -> emit(OpCode.SUB);
+            case MULTIPLY-> emit(OpCode.MUL);
+            case DIVIDE  -> emit(OpCode.DIV);
+            case MODULO  -> emit(OpCode.MOD);
+            case EQUALS  -> emit(OpCode.EQ);
+            case NOT_EQUALS -> emit(OpCode.NEQ);
+            case LESS    -> emit(OpCode.LT);
+            case GREATER -> emit(OpCode.GT);
+            case LESS_EQUAL -> emit(OpCode.LE);
+            case GREATER_EQUAL -> emit(OpCode.GE);
+            case AND     -> emit(OpCode.AND);
+            case OR      -> emit(OpCode.OR);
+            default      -> {}
         }
-        instructions.add(new Instruction(OpCode.LOAD_VAR, slot));
-        return instructions;
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitStringNode(StringNode node) {
-        return List.of(new Instruction(OpCode.PUSH_STRING, node.value));
+
+    @Override public Void visitUnaryNode(UnaryNode n) {
+        n.expression.accept(this);
+        if (n.operator == TokenType.NOT)   emit(OpCode.NOT);
+        if (n.operator == TokenType.MINUS) { emit(OpCode.PUSH_INT, -1); emit(OpCode.MUL); }
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitNumberNode(NumberNode node) {
-        return List.of(new Instruction(OpCode.PUSH_INT, node.value));
-    }
-    
-    @Override
-    public List<Instruction> visitBooleanNode(BooleanNode node) {
-        return List.of(new Instruction(OpCode.PUSH_BOOL, node.value));
-    }
-    
-    @Override
-    public List<Instruction> visitBinaryNode(BinaryNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        instructions.addAll(node.left.accept(this));
-        instructions.addAll(node.right.accept(this));
-        
-        OpCode op = toOpCode(node.operator);
-        instructions.add(new Instruction(op));
-        
-        return instructions;
-    }
-    
-    @Override
-    public List<Instruction> visitUnaryNode(UnaryNode node) {
-        List<Instruction> instructions = node.expression.accept(this);
-        if (node.operator == TokenType.NOT) {
-            instructions.add(new Instruction(OpCode.NOT));
-        } else if (node.operator == TokenType.MINUS) {
-            instructions.add(new Instruction(OpCode.PUSH_INT, 0));
-            instructions.add(new Instruction(OpCode.SUB));
-        }
-        return instructions;
-    }
-    
-    @Override
-    public List<Instruction> visitIfNode(IfNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        
-        instructions.addAll(node.condition.accept(this));
-        instructions.add(new Instruction(OpCode.JMP_IF_FALSE, null)); // placeholder
-        
-        int jmpIndex = instructions.size() - 1;
-        instructions.addAll(node.thenBranch.accept(this));
-        
-        if (node.elseBranch != null) {
-            instructions.add(new Instruction(OpCode.JMP, null)); // placeholder
-            int jmpEndIndex = instructions.size() - 1;
-            
-            instructions.set(jmpIndex, new Instruction(OpCode.JMP_IF_FALSE, instructions.size()));
-            instructions.addAll(node.elseBranch.accept(this));
-            instructions.set(jmpEndIndex, new Instruction(OpCode.JMP, instructions.size()));
+
+    @Override public Void visitIfNode(IfNode n) {
+        n.condition.accept(this);
+        int jumpFalse = emitJump(OpCode.JMP_IF_FALSE);
+        n.thenBranch.accept(this);
+        if (n.elseBranch != null) {
+            int jumpEnd = emitJump(OpCode.JMP);
+            patchJump(jumpFalse);
+            n.elseBranch.accept(this);
+            patchJump(jumpEnd);
         } else {
-            instructions.set(jmpIndex, new Instruction(OpCode.JMP_IF_FALSE, instructions.size()));
+            patchJump(jumpFalse);
         }
-        
-        return instructions;
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitWhileNode(WhileNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        
-        int loopStart = instructions.size();
-        instructions.addAll(node.condition.accept(this));
-        instructions.add(new Instruction(OpCode.JMP_IF_FALSE, null)); // placeholder
-        
-        int jmpIndex = instructions.size() - 1;
-        instructions.addAll(node.body.accept(this));
-        instructions.add(new Instruction(OpCode.JMP, loopStart));
-        
-        instructions.set(jmpIndex, new Instruction(OpCode.JMP_IF_FALSE, instructions.size()));
-        
-        return instructions;
+
+    @Override public Void visitWhileNode(WhileNode n) {
+        int loopStart = here();
+        n.condition.accept(this);
+        int jumpEnd = emitJump(OpCode.JMP_IF_FALSE);
+        n.body.accept(this);
+        emit(OpCode.JMP, loopStart);
+        patchJump(jumpEnd);
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitBlockNode(BlockNode node) {
-        List<Instruction> instructions = new ArrayList<>();
-        for (ASTNode stmt : node.statements) {
-            instructions.addAll(stmt.accept(this));
+
+    @Override public Void visitForNode(ForNode n) {
+        if (n.init != null) n.init.accept(this);
+        int loopStart = here();
+        if (n.condition != null) {
+            n.condition.accept(this);
+            int jumpEnd = emitJump(OpCode.JMP_IF_FALSE);
+            n.body.accept(this);
+            if (n.increment != null) { n.increment.accept(this); emit(OpCode.POP); }
+            emit(OpCode.JMP, loopStart);
+            patchJump(jumpEnd);
+        } else {
+            n.body.accept(this);
+            if (n.increment != null) { n.increment.accept(this); emit(OpCode.POP); }
+            emit(OpCode.JMP, loopStart);
         }
-        return instructions;
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitScanNode(ScanNode node) {
-        List<Instruction> instructions = node.url.accept(this);
-        instructions.add(new Instruction(OpCode.TNS_SCAN, node.depth));
-        return instructions;
+
+    @Override public Void visitFunctionNode(FunctionNode n) {
+        int jumpOver = emitJump(OpCode.JMP); // pula o corpo durante execução linear
+        functionAddrs.put(n.name, here());
+        emit(OpCode.MAKE_FRAME, n.params);
+        n.body.accept(this);
+        emit(OpCode.PUSH_NULL);
+        emit(OpCode.RET);
+        patchJump(jumpOver);
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitAnalyzeNode(AnalyzeNode node) {
-        List<Instruction> instructions = node.url.accept(this);
-        instructions.add(new Instruction(OpCode.TNS_ANALYZE));
-        return instructions;
+
+    @Override public Void visitCallNode(CallNode n) {
+        for (ASTNode arg : n.arguments) arg.accept(this);
+        int callIdx = here();
+        emit(OpCode.CALL, -1); // será patchado
+        callPatches.put(callIdx, n.callee);
+        return null;
     }
-    
-    @Override
-    public List<Instruction> visitReportNode(ReportNode node) {
-        return List.of(new Instruction(OpCode.TNS_REPORT, node.format));
+
+    @Override public Void visitReturnNode(ReturnNode n) {
+        if (n.value != null) n.value.accept(this);
+        else emit(OpCode.PUSH_NULL);
+        emit(OpCode.RET);
+        return null;
     }
-    
-    private OpCode toOpCode(TokenType type) {
-        return switch (type) {
-            case PLUS -> OpCode.ADD;
-            case MINUS -> OpCode.SUB;
-            case MULTIPLY -> OpCode.MUL;
-            case DIVIDE -> OpCode.DIV;
-            case MODULO -> OpCode.MOD;
-            case EQUALS -> OpCode.EQ;
-            case NOT_EQUALS -> OpCode.NEQ;
-            case LESS -> OpCode.LT;
-            case GREATER -> OpCode.GT;
-            case LESS_EQUAL -> OpCode.LE;
-            case GREATER_EQUAL -> OpCode.GE;
-            case AND -> OpCode.AND;
-            case OR -> OpCode.OR;
-            case ASSIGN -> OpCode.STORE_VAR;
-            default -> throw new IllegalArgumentException("Unknown operator: " + type);
-        };
+
+    // Comandos TNS
+    @Override public Void visitScanNode(ScanNode n)    { n.url.accept(this); emit(OpCode.TNS_SCAN); return null; }
+    @Override public Void visitDeepScanNode(DeepScanNode n) {
+        n.url.accept(this);
+        if (n.depth != null) n.depth.accept(this); else emit(OpCode.PUSH_INT, 2);
+        emit(OpCode.TNS_DEEPSCAN);
+        return null;
     }
+    @Override public Void visitAnalyzeNode(AnalyzeNode n)   { n.url.accept(this); emit(OpCode.TNS_ANALYZE); return null; }
+    @Override public Void visitDownloadNode(DownloadNode n) {
+        n.url.accept(this);
+        if (n.destination != null) n.destination.accept(this); else emit(OpCode.PUSH_STRING, "./downloads");
+        emit(OpCode.TNS_DOWNLOAD);
+        return null;
+    }
+    @Override public Void visitGithubNode(GithubNode n) { n.repo.accept(this); emit(OpCode.TNS_GITHUB); return null; }
+    @Override public Void visitReportNode(ReportNode n) { emit(OpCode.TNS_REPORT, n.format); return null; }
+    @Override public Void visitSyncNode(SyncNode n)     { emit(OpCode.TNS_SYNC); return null; }
 }
 
 // ============================================================
-// VIRTUAL MACHINE
+// MÁQUINA VIRTUAL
 // ============================================================
 
-public class VirtualMachine {
-    private final Stack<Object> stack = new Stack<>();
-    private final Map<Integer, Object> globals = new HashMap<>();
-    private int pc = 0;
+class VirtualMachine {
+    private final Deque<Object> stack = new ArrayDeque<>();
+    // Pilha de ambientes (escopos de variáveis)
+    private final Deque<Map<String, Object>> envStack = new ArrayDeque<>();
+    // Pilha de retorno (endereços de retorno)
+    private final Deque<Integer> returnStack = new ArrayDeque<>();
+    // Saída capturada (para relatório)
+    private final List<String> outputLog = new ArrayList<>();
     private List<Instruction> code;
-    private boolean running = true;
-    
-    public void execute(List<Instruction> code) {
-        this.code = code;
-        this.pc = 0;
-        this.running = true;
-        
+    private int pc = 0;
+
+    public void execute(List<Instruction> bytecode) {
+        this.code = bytecode;
+        envStack.push(new HashMap<>());
+        boolean running = true;
+
         while (running && pc < code.size()) {
-            Instruction ins = code.get(pc);
-            pc++;
-            executeInstruction(ins);
+            Instruction ins = code.get(pc++);
+
+            switch (ins.opCode) {
+                // --- Stack ---
+                case PUSH_INT    -> push(ins.operand);
+                case PUSH_FLOAT  -> push(ins.operand);
+                case PUSH_STRING -> push(ins.operand);
+                case PUSH_BOOL   -> push(ins.operand);
+                case PUSH_NULL   -> push(null);
+                case POP         -> pop();
+                case DUP         -> push(peek());
+
+                // --- Variáveis ---
+                case STORE_VAR -> { String vn = (String) ins.operand; setVar(vn, pop()); }
+                case LOAD_VAR  -> {
+                    String vn = (String) ins.operand;
+                    Object val = getVar(vn);
+                    if (val == null && !hasVar(vn)) {
+                        System.err.println("[VM] Variável não definida: " + vn);
+                    }
+                    push(val);
+                }
+
+                // --- Aritmética ---
+                case ADD -> {
+                    Object b = pop(), a = pop();
+                    if (a instanceof String || b instanceof String)
+                        push(stringify(a) + stringify(b));
+                    else push(numericOp(a, b, '+'));
+                }
+                case SUB -> { Object b = pop(), a = pop(); push(numericOp(a, b, '-')); }
+                case MUL -> { Object b = pop(), a = pop(); push(numericOp(a, b, '*')); }
+                case DIV -> {
+                    Object b = pop(), a = pop();
+                    double dv = toDouble(b);
+                    if (dv == 0) { System.err.println("[VM] Divisão por zero"); push(0); }
+                    else push(numericOp(a, b, '/'));
+                }
+                case MOD -> { Object b = pop(), a = pop(); push(numericOp(a, b, '%')); }
+                case CONCAT -> { Object b = pop(), a = pop(); push(stringify(a) + stringify(b)); }
+
+                // --- Comparações ---
+                case EQ  -> { Object b = pop(), a = pop(); push(equals(a, b)); }
+                case NEQ -> { Object b = pop(), a = pop(); push(!equals(a, b)); }
+                case LT  -> { Object b = pop(), a = pop(); push(compare(a, b) < 0); }
+                case GT  -> { Object b = pop(), a = pop(); push(compare(a, b) > 0); }
+                case LE  -> { Object b = pop(), a = pop(); push(compare(a, b) <= 0); }
+                case GE  -> { Object b = pop(), a = pop(); push(compare(a, b) >= 0); }
+
+                // --- Lógica ---
+                case AND -> { Object b = pop(), a = pop(); push(isTruthy(a) && isTruthy(b)); }
+                case OR  -> { Object b = pop(), a = pop(); push(isTruthy(a) || isTruthy(b)); }
+                case NOT -> push(!isTruthy(pop()));
+
+                // --- Fluxo ---
+                case JMP          -> pc = (int) ins.operand;
+                case JMP_IF_FALSE -> { if (!isTruthy(pop())) pc = (int) ins.operand; }
+                case JMP_IF_TRUE  -> { if (isTruthy(pop()))  pc = (int) ins.operand; }
+
+                // --- Funções ---
+                case MAKE_FRAME -> {
+                    @SuppressWarnings("unchecked")
+                    List<String> params = (List<String>) ins.operand;
+                    Map<String, Object> frame = new HashMap<>();
+                    // Parâmetros são empilhados em ordem inversa
+                    for (int i = params.size() - 1; i >= 0; i--) {
+                        frame.put(params.get(i), pop());
+                    }
+                    envStack.push(frame);
+                }
+                case CALL -> {
+                    returnStack.push(pc);
+                    pc = (int) ins.operand;
+                }
+                case RET -> {
+                    Object retVal = pop();
+                    if (!envStack.isEmpty()) envStack.pop();
+                    pc = returnStack.pop();
+                    push(retVal);
+                }
+                case POP_FRAME -> { if (!envStack.isEmpty()) envStack.pop(); }
+
+                // --- I/O ---
+                case PRINT   -> { String s = stringify(pop()); System.out.print(s); outputLog.add(s); }
+                case PRINTLN -> { String s = stringify(pop()); System.out.println(s); outputLog.add(s); }
+
+                // --- Comandos TNS ---
+                case TNS_SCAN -> {
+                    String url = stringify(pop());
+                    System.out.println("[TNS SCAN] → " + url);
+                }
+                case TNS_DEEPSCAN -> {
+                    int depth = toInt(pop());
+                    String url = stringify(pop());
+                    System.out.println("[TNS DEEPSCAN] → " + url + " (profundidade " + depth + ")");
+                }
+                case TNS_ANALYZE -> {
+                    String url = stringify(pop());
+                    System.out.println("[TNS ANALYZE] → " + url);
+                }
+                case TNS_DOWNLOAD -> {
+                    String dest = stringify(pop());
+                    String url  = stringify(pop());
+                    System.out.println("[TNS DOWNLOAD] → " + url + " para " + dest);
+                }
+                case TNS_GITHUB -> {
+                    String repo = stringify(pop());
+                    System.out.println("[TNS GITHUB] → " + repo);
+                }
+                case TNS_REPORT -> {
+                    String fmt = (String) ins.operand;
+                    System.out.println("[TNS REPORT] Gerando relatório " + fmt.toUpperCase());
+                    if (fmt.equals("html")) generateHtmlReport();
+                    else generateJsonReport();
+                }
+                case TNS_SYNC -> System.out.println("[TNS SYNC] Sincronizando comandos da comunidade...");
+                case HALT -> running = false;
+            }
         }
     }
-    
-    private void executeInstruction(Instruction ins) {
-        switch (ins.opCode) {
-            case PUSH_INT -> stack.push(ins.operand);
-            case PUSH_STRING -> stack.push(ins.operand);
-            case PUSH_BOOL -> stack.push(ins.operand);
-            case PUSH_VAR -> stack.push(ins.operand);
-            
-            case POP -> stack.pop();
-            case STORE_VAR -> {
-                int slot = (int) ins.operand;
-                globals.put(slot, stack.pop());
-            }
-            case LOAD_VAR -> {
-                int slot = (int) ins.operand;
-                stack.push(globals.get(slot));
-            }
-            
-            case ADD -> {
-                Object b = stack.pop();
-                Object a = stack.pop();
-                if (a instanceof Number && b instanceof Number) {
-                    double val = ((Number)a).doubleValue() + ((Number)b).doubleValue();
-                    stack.push((int)val);
-                } else {
-                    stack.push(a.toString() + b.toString());
-                }
-            }
-            case SUB -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a - b);
-            }
-            case MUL -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a * b);
-            }
-            case DIV -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a / b);
-            }
-            case MOD -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a % b);
-            }
-            
-            case EQ -> {
-                Object b = stack.pop();
-                Object a = stack.pop();
-                stack.push(a.equals(b));
-            }
-            case NEQ -> {
-                Object b = stack.pop();
-                Object a = stack.pop();
-                stack.push(!a.equals(b));
-            }
-            case LT -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a < b);
-            }
-            case GT -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a > b);
-            }
-            case LE -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a <= b);
-            }
-            case GE -> {
-                int b = ((Number)stack.pop()).intValue();
-                int a = ((Number)stack.pop()).intValue();
-                stack.push(a >= b);
-            }
-            
-            case AND -> {
-                boolean b = (boolean) stack.pop();
-                boolean a = (boolean) stack.pop();
-                stack.push(a && b);
-            }
-            case OR -> {
-                boolean b = (boolean) stack.pop();
-                boolean a = (boolean) stack.pop();
-                stack.push(a || b);
-            }
-            case NOT -> {
-                boolean a = (boolean) stack.pop();
-                stack.push(!a);
-            }
-            
-            case JMP -> pc = (int) ins.operand;
-            case JMP_IF_FALSE -> {
-                boolean cond = (boolean) stack.pop();
-                if (!cond) pc = (int) ins.operand;
-            }
-            
-            case PRINT -> System.out.print(stack.pop());
-            case PRINT_LN -> System.out.println(stack.pop());
-            
-            case TNS_SCAN -> {
-                String url = (String) stack.pop();
-                int depth = (int) ins.operand;
-                System.out.println("[TNS] Escaneando " + url + " (profundidade " + depth + ")");
-                // Aqui chamaria o scanner real
-            }
-            case TNS_ANALYZE -> {
-                String url = (String) stack.pop();
-                System.out.println("[TNS] Analisando " + url);
-            }
-            case TNS_REPORT -> {
-                String format = (String) ins.operand;
-                System.out.println("[TNS] Gerando relatório " + format);
-            }
-            case TNS_GITHUB -> System.out.println("[TNS] Integrando GitHub");
-            case TNS_SYNC -> System.out.println("[TNS] Sincronizando comandos");
-            
-            case HALT -> running = false;
+
+    // --- Helpers de stack ---
+    private void push(Object val) { stack.push(val); }
+    private Object pop()          { return stack.isEmpty() ? null : stack.pop(); }
+    private Object peek()         { return stack.isEmpty() ? null : stack.peek(); }
+
+    // --- Helpers de variáveis ---
+    private void setVar(String name, Object val) { envStack.peek().put(name, val); }
+    private Object getVar(String name) {
+        for (Map<String, Object> env : envStack) {
+            if (env.containsKey(name)) return env.get(name);
         }
+        return null;
+    }
+    private boolean hasVar(String name) {
+        for (Map<String, Object> env : envStack) {
+            if (env.containsKey(name)) return true;
+        }
+        return false;
+    }
+
+    // --- Aritmética ---
+    private Object numericOp(Object a, Object b, char op) {
+        double da = toDouble(a), db = toDouble(b);
+        double result = switch (op) {
+            case '+' -> da + db;
+            case '-' -> da - db;
+            case '*' -> da * db;
+            case '/' -> da / db;
+            case '%' -> da % db;
+            default  -> 0;
+        };
+        if (a instanceof Integer && b instanceof Integer && op != '/') return (int) result;
+        return result;
+    }
+
+    private double toDouble(Object v) {
+        if (v instanceof Integer i) return i.doubleValue();
+        if (v instanceof Double d)  return d;
+        if (v instanceof String s)  try { return Double.parseDouble(s); } catch (Exception e) { return 0; }
+        return 0;
+    }
+
+    private int toInt(Object v) {
+        return (int) toDouble(v);
+    }
+
+    private boolean equals(Object a, Object b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.equals(b);
+    }
+
+    private int compare(Object a, Object b) {
+        return Double.compare(toDouble(a), toDouble(b));
+    }
+
+    private boolean isTruthy(Object v) {
+        if (v == null)           return false;
+        if (v instanceof Boolean bl) return bl;
+        if (v instanceof Integer i)  return i != 0;
+        if (v instanceof Double d)   return d != 0;
+        if (v instanceof String s)   return !s.isEmpty();
+        return true;
+    }
+
+    private String stringify(Object v) {
+        if (v == null)            return "nulo";
+        if (v instanceof Boolean) return (Boolean) v ? "verdadeiro" : "falso";
+        if (v instanceof Double d) {
+            if (d == Math.floor(d) && !Double.isInfinite(d)) return String.valueOf(d.intValue());
+            return d.toString();
+        }
+        return v.toString();
+    }
+
+    // --- Geração de relatório ---
+    private void generateJsonReport() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n  \"output\": [\n");
+        for (int i = 0; i < outputLog.size(); i++) {
+            sb.append("    \"").append(outputLog.get(i).replace("\"", "\\\"")).append("\"");
+            if (i < outputLog.size() - 1) sb.append(",");
+            sb.append("\n");
+        }
+        sb.append("  ]\n}");
+        System.out.println("[REPORT JSON]\n" + sb);
+    }
+
+    private void generateHtmlReport() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");
+        sb.append("<title>TONACO SCRIPT Report</title>");
+        sb.append("<style>body{font-family:monospace;background:#0d1117;color:#c9d1d9;padding:20px}");
+        sb.append("h1{color:#58a6ff}.line{padding:4px 0;border-bottom:1px solid #21262d}</style></head><body>");
+        sb.append("<h1>TONACO SCRIPT — Relatório de Execução</h1>");
+        for (String line : outputLog) {
+            sb.append("<div class='line'>").append(line.replace("<", "&lt;")).append("</div>");
+        }
+        sb.append("</body></html>");
+        System.out.println("[REPORT HTML] " + outputLog.size() + " linhas capturadas.");
     }
 }
