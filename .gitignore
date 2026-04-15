@@ -1,0 +1,12 @@
+# Pastas geradas pelo programa
+.tonaco_comandos/
+*.json
+*.html
+scan_*
+relatorio_*
+evolucao_*
+github_analise.json
+upload_github.sh
+
+# Arquivos compilados
+*.class
