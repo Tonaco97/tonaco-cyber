@@ -1,61 +1,59 @@
-// script.tns - Exemplo de programa na linguagem TONACO SCRIPT
-// Criado por: Tonaco Cyber
+// script.tns — Exemplo completo compatível com v1 e v2
+// Funciona tanto com escrever/variavel quanto com print/let
+// Criado por: Guilherme Lucas Tonaco Carvalho
 
-# ============================================
-# CONFIGURAÇÕES INICIAIS
-# ============================================
+// === Saída inicial ===
+print "╔════════════════════════════════════════════════════╗"
+print "║     TONACO SCRIPT v2.0 — Script de Demonstração   ║"
+print "╚════════════════════════════════════════════════════╝"
+print ""
 
-escrever "╔════════════════════════════════════════════════════╗"
-escrever "║     TONACO SCRIPT - Script de Automação Web       ║"
-escrever "╚════════════════════════════════════════════════════╝"
-escrever ""
+// === Variáveis ===
+let alvo = "https://exemplo.com.br"
+let profundidade = 3
+let nome_script = "tonaco-demo"
 
-# ============================================
-# VARIÁVEIS
-# ============================================
+print "Alvo definido: " + alvo
 
-variavel alvo = "https://exemplo.com.br"
-variavel profundidade = 3
-variavel relatorio_formato = "html"
+// === Controle de fluxo ===
+if (profundidade > 2) {
+    print "Profundidade alta: " + profundidade
+} else {
+    print "Profundidade padrão"
+}
 
-# ============================================
-# BUSCA AUTOMÁTICA DE ARQUIVOS
-# ============================================
+// === Loop ===
+let contador = 0
+while (contador < 3) {
+    print "  [" + contador + "] iterando..."
+    contador = contador + 1
+}
 
-escrever "🔍 Iniciando busca automática em: " + alvo
-buscar alvo
+// === Função personalizada ===
+function saudar(nome) {
+    print "Olá, " + nome + "!"
+    return verdadeiro
+}
 
-# ============================================
-# SCAN PROFUNDO
-# ============================================
+saudar("TONACO CYBER")
+print ""
 
-escrever ""
-escrever "🔎 Escaneando links recursivamente..."
-scanear alvo --profundidade 3
+// === Comandos TNS ===
+print "Iniciando varredura..."
+scan alvo
 
-# ============================================
-# ANÁLISE DO SITE
-# ============================================
+print "Escaneamento profundo..."
+deepscan alvo, 3
 
-escrever ""
-escrever "📊 Analisando segurança do site..."
-analisar alvo
+print "Analisando segurança..."
+analyze alvo
 
-# ============================================
-# INTEGRAÇÃO COM GITHUB
-# ============================================
+print "Integrando GitHub..."
+github "https://github.com/Tonaco97/tonaco-cyber"
 
-escrever ""
-escrever "📦 Integrando com GitHub..."
-github "https://github.com/tonaco97/tonaco-cyber"
+print ""
+print "Gerando relatório..."
+report html
 
-# ============================================
-# GERAR RELATÓRIO
-# ============================================
-
-escrever ""
-escrever "📝 Gerando relatório final..."
-relatorio html
-
-escrever ""
-escrever "✅ SCRIPT CONCLUÍDO COM SUCESSO!"
+print ""
+print "Script concluído com sucesso!"
