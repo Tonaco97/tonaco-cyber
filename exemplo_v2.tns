@@ -1,0 +1,25 @@
+// exemplo_v2.tns
+// Demonstração da nova sintaxe
+
+let nome = "TONACO SCRIPT";
+let versao = 2;
+let ativo = true;
+
+print "Bem vindo ao " + nome + " versao " + versao;
+
+if (ativo) {
+    print "Sistema ativo";
+} else {
+    print "Sistema inativo";
+}
+
+let contador = 0;
+while (contador < 3) {
+    print "Iteracao: " + contador;
+    contador = contador + 1;
+}
+
+// Comandos TNS
+scan "https://exemplo.com", 3;
+analyze "https://exemplo.com";
+report html;
