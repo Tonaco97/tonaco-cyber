@@ -1,411 +1,178 @@
 // TradutorUniversal.java
-// Módulo de tradução multilíngue para TONACO SCRIPT
+// Módulo de tradução multilíngue para TONACO SCRIPT v2.0
+// Detecta idioma e normaliza comandos para sintaxe v2 canônica
 // Criado por: Guilherme Lucas Tonaco Carvalho
 
+package com.tonaco.tns;
+
 import java.io.*;
-import java.net.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.regex.*;
 import com.google.gson.*;
 
 public class TradutorUniversal {
-    
-    private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-    private static final String PASTA_IDIOMAS = ".tonaco_idiomas/";
-    private static final String ARQUIVO_TRADUCOES = PASTA_IDIOMAS + "traducoes.json";
-    
-    private Map<String, Map<String, String>> dicionarioGlobal;
-    private Map<String, String> mapaComandos;
-    private String idiomaDetectado;
-    
-    // Mapeamento de comandos nativos (em inglês como padrão)
-    private static final Map<String, String> COMANDOS_PADRAO = new LinkedHashMap<>();
-    
+
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final String DIR_IDIOMAS   = ".tonaco_idiomas/";
+    private static final String ARQ_TRADUCOES = DIR_IDIOMAS + "traducoes.json";
+
+    // Idiomas suportados → Map<palavra, keyword_v2>
+    private final Map<String, Map<String, String>> dicionarios = new LinkedHashMap<>();
+    private String idiomaDetectado = "portugues";
+
+    // ============================================================
+    // Dicionários embutidos
+    // ============================================================
+
+    private static final Map<String, Map<String, String>> DICS_BUILTIN = new LinkedHashMap<>();
+
     static {
-        COMANDOS_PADRAO.put("buscar", "scan");
-        COMANDOS_PADRAO.put("scanear", "deepscan");
-        COMANDOS_PADRAO.put("baixar", "download");
-        COMANDOS_PADRAO.put("analisar", "analyze");
-        COMANDOS_PADRAO.put("github", "github");
-        COMANDOS_PADRAO.put("relatorio", "report");
-        COMANDOS_PADRAO.put("escrever", "print");
-        COMANDOS_PADRAO.put("variavel", "variable");
-        COMANDOS_PADRAO.put("imprimir", "echo");
-        COMANDOS_PADRAO.put("sincronizar", "sync");
-        COMANDOS_PADRAO.put("criar_comando", "create_command");
-        COMANDOS_PADRAO.put("compartilhar", "share");
-        COMANDOS_PADRAO.put("relatorio_evolucao", "evolution_report");
-        COMANDOS_PADRAO.put("recomendar", "recommend");
-        COMANDOS_PADRAO.put("comandos", "commands");
+        Map<String, String> pt = new LinkedHashMap<>();
+        pt.put("escrever",   "print");    pt.put("imprimir",   "print");
+        pt.put("mostrar",    "print");    pt.put("exibir",     "print");
+        pt.put("variavel",   "let");      pt.put("variável",   "let");
+        pt.put("declarar",   "let");      pt.put("definir",    "let");
+        pt.put("se",         "if");       pt.put("senao",      "else");
+        pt.put("senão",      "else");     pt.put("enquanto",   "while");
+        pt.put("para",       "for");      pt.put("funcao",     "function");
+        pt.put("função",     "function"); pt.put("retornar",   "return");
+        pt.put("verdadeiro", "true");     pt.put("falso",      "false");
+        pt.put("nulo",       "null");
+        pt.put("buscar",     "scan");     pt.put("procurar",   "scan");
+        pt.put("scanear",    "deepscan"); pt.put("varrer",     "deepscan");
+        pt.put("analisar",   "analyze");  pt.put("inspecionar","analyze");
+        pt.put("baixar",     "download"); pt.put("transferir", "download");
+        pt.put("relatorio",  "report");   pt.put("relatório",  "report");
+        pt.put("sincronizar","sync");     pt.put("compartilhar","share");
+        DICS_BUILTIN.put("portugues", pt);
+
+        Map<String, String> es = new LinkedHashMap<>();
+        es.put("imprimir",   "print");    es.put("mostrar",    "print");
+        es.put("variable",   "let");      es.put("si",         "if");
+        es.put("sino",       "else");     es.put("mientras",   "while");
+        es.put("para",       "for");      es.put("función",    "function");
+        es.put("retornar",   "return");   es.put("verdadero",  "true");
+        es.put("falso",      "false");    es.put("nulo",       "null");
+        es.put("buscar",     "scan");     es.put("analizar",   "analyze");
+        es.put("descargar",  "download"); es.put("informe",    "report");
+        es.put("sincronizar","sync");     es.put("compartir",  "share");
+        DICS_BUILTIN.put("espanhol", es);
+
+        Map<String, String> fr = new LinkedHashMap<>();
+        fr.put("afficher",   "print");    fr.put("ecrire",     "print");
+        fr.put("variable",   "let");      fr.put("si",         "if");
+        fr.put("sinon",      "else");     fr.put("pendant",    "while");
+        fr.put("pour",       "for");      fr.put("fonction",   "function");
+        fr.put("retourner",  "return");   fr.put("vrai",       "true");
+        fr.put("faux",       "false");    fr.put("nul",        "null");
+        fr.put("chercher",   "scan");     fr.put("analyser",   "analyze");
+        fr.put("telecharger","download"); fr.put("rapport",    "report");
+        fr.put("synchroniser","sync");    fr.put("partager",   "share");
+        DICS_BUILTIN.put("frances", fr);
+
+        Map<String, String> de = new LinkedHashMap<>();
+        de.put("anzeigen",   "print");    de.put("ausgeben",   "print");
+        de.put("variable",   "let");      de.put("wenn",       "if");
+        de.put("sonst",      "else");     de.put("waehrend",   "while");
+        de.put("fuer",       "for");      de.put("funktion",   "function");
+        de.put("zurueck",    "return");   de.put("wahr",       "true");
+        de.put("falsch",     "false");    de.put("nichts",     "null");
+        de.put("suchen",     "scan");     de.put("analysieren","analyze");
+        de.put("herunterladen","download");de.put("bericht",   "report");
+        de.put("synchronisieren","sync"); de.put("teilen",     "share");
+        DICS_BUILTIN.put("alemao", de);
     }
-    
+
+    // ============================================================
+    // Construtor
+    // ============================================================
+
     public TradutorUniversal() {
-        this.dicionarioGlobal = new HashMap<>();
-        this.mapaComandos = new HashMap<>();
-        this.idiomaDetectado = "portugues";
-        criarPastas();
-        carregarTraducoes();
-        inicializarDicionarioBase();
+        dicionarios.putAll(DICS_BUILTIN);
+        criarDiretorios();
+        carregarTraducoesExternas();
     }
-    
-    private void criarPastas() {
+
+    private void criarDiretorios() {
+        try { Files.createDirectories(Path.of(DIR_IDIOMAS)); }
+        catch (IOException ignored) {}
+    }
+
+    private void carregarTraducoesExternas() {
         try {
-            Files.createDirectories(Path.of(PASTA_IDIOMAS));
-        } catch (IOException e) {
-            System.err.println("Erro ao criar pastas de idioma: " + e.getMessage());
-        }
+            Path p = Path.of(ARQ_TRADUCOES);
+            if (!Files.exists(p)) return;
+            @SuppressWarnings("unchecked")
+            Map<String, Map<String, String>> externo =
+                GSON.fromJson(Files.readString(p), LinkedHashMap.class);
+            if (externo != null) dicionarios.putAll(externo);
+        } catch (Exception ignored) {}
     }
-    
-    private void inicializarDicionarioBase() {
-        // Dicionário Português -> Inglês
-        Map<String, String> portugues = new HashMap<>();
-        portugues.put("buscar", "scan");
-        portugues.put("procure", "scan");
-        portugues.put("ache", "scan");
-        portugues.put("escaneie", "deepscan");
-        portugues.put("varredura", "deepscan");
-        portugues.put("baixar", "download");
-        portugues.put("transferir", "download");
-        portugues.put("analisar", "analyze");
-        portugues.put("inspecionar", "analyze");
-        portugues.put("verificar", "analyze");
-        portugues.put("escrever", "print");
-        portugues.put("mostrar", "print");
-        portugues.put("exibir", "print");
-        portugues.put("variavel", "variable");
-        portugues.put("declare", "variable");
-        portugues.put("imprimir", "echo");
-        portugues.put("exiba", "echo");
-        portugues.put("relatorio", "report");
-        portugues.put("relate", "report");
-        portugues.put("sincronizar", "sync");
-        portugues.put("atualizar", "sync");
-        portugues.put("criar_comando", "create_command");
-        portugues.put("novo_comando", "create_command");
-        portugues.put("compartilhar", "share");
-        portugues.put("enviar", "share");
-        dicionarioGlobal.put("portugues", portugues);
-        
-        // Dicionário Espanhol -> Inglês
-        Map<String, String> espanhol = new HashMap<>();
-        espanhol.put("buscar", "scan");
-        espanhol.put("busque", "scan");
-        espanhol.put("escanear", "deepscan");
-        espanhol.put("descargar", "download");
-        espanhol.put("analizar", "analyze");
-        espanhol.put("escribir", "print");
-        espanhol.put("variable", "variable");
-        espanhol.put("imprimir", "echo");
-        espanhol.put("informe", "report");
-        espanhol.put("sincronizar", "sync");
-        espanhol.put("crear_comando", "create_command");
-        espanhol.put("compartir", "share");
-        dicionarioGlobal.put("espanhol", espanhol);
-        
-        // Dicionário Francês -> Inglês
-        Map<String, String> frances = new HashMap<>();
-        frances.put("chercher", "scan");
-        frances.put("analyser", "analyze");
-        frances.put("telecharger", "download");
-        frances.put("ecrire", "print");
-        frances.put("variable", "variable");
-        frances.put("afficher", "echo");
-        frances.put("rapport", "report");
-        frances.put("synchroniser", "sync");
-        frances.put("creer_commande", "create_command");
-        frances.put("partager", "share");
-        dicionarioGlobal.put("frances", frances);
-        
-        // Dicionário Alemão -> Inglês
-        Map<String, String> alemao = new HashMap<>();
-        alemao.put("suchen", "scan");
-        alemao.put("scannen", "deepscan");
-        alemao.put("herunterladen", "download");
-        alemao.put("analysieren", "analyze");
-        alemao.put("schreiben", "print");
-        alemao.put("variable", "variable");
-        alemao.put("zeigen", "echo");
-        alemao.put("bericht", "report");
-        alemao.put("synchronisieren", "sync");
-        alemao.put("befehl_erstellen", "create_command");
-        alemao.put("teilen", "share");
-        dicionarioGlobal.put("alemao", alemao);
-        
-        // Dicionário Italiano -> Inglês
-        Map<String, String> italiano = new HashMap<>();
-        italiano.put("cercare", "scan");
-        italiano.put("scansionare", "deepscan");
-        italiano.put("scaricare", "download");
-        italiano.put("analizzare", "analyze");
-        italiano.put("scrivere", "print");
-        italiano.put("variabile", "variable");
-        italiano.put("mostrare", "echo");
-        italiano.put("rapporto", "report");
-        italiano.put("sincronizzare", "sync");
-        italiano.put("crea_comando", "create_command");
-        italiano.put("condividere", "share");
-        dicionarioGlobal.put("italiano", italiano);
-        
-        // Dicionário Russo -> Inglês (transliterado)
-        Map<String, String> russo = new HashMap<>();
-        russo.put("poisk", "scan");
-        russo.put("skanirovat", "deepscan");
-        russo.put("skachat", "download");
-        russo.put("analizirovat", "analyze");
-        russo.put("napisat", "print");
-        russo.put("peremennaya", "variable");
-        russo.put("vyvesti", "echo");
-        russo.put("otchet", "report");
-        russo.put("sinkhronizirovat", "sync");
-        dicionarioGlobal.put("russo", russo);
-        
-        // Dicionário Chinês (Mandarin simplificado) -> Inglês
-        Map<String, String> chines = new HashMap<>();
-        chines.put("sousuo", "scan");
-        chines.put("saomiao", "deepscan");
-        chines.put("xiazai", "download");
-        chines.put("fenxi", "analyze");
-        chines.put("shuru", "print");
-        chines.put("bianliang", "variable");
-        chines.put("xianshi", "echo");
-        chines.put("baogao", "report");
-        chines.put("tongbu", "sync");
-        dicionarioGlobal.put("chines", chines);
-        
-        // Dicionário Japonês -> Inglês
-        Map<String, String> japones = new HashMap<>();
-        japones.put("kensaku", "scan");
-        japones.put("sukyan", "deepscan");
-        japones.put("daunrōdo", "download");
-        japones.put("bunseki", "analyze");
-        japones.put("hyōji", "print");
-        japones.put("hensū", "variable");
-        japones.put("hyōji_suru", "echo");
-        japones.put("hōkoku", "report");
-        japones.put("dōki", "sync");
-        dicionarioGlobal.put("japones", japones);
-        
-        // Dicionário Árabe -> Inglês (transliterado)
-        Map<String, String> arabe = new HashMap<>();
-        arabe.put("bahth", "scan");
-        arabe.put("mash", "deepscan");
-        arabe.put("tanzil", "download");
-        arabe.put("tahlil", "analyze");
-        arabe.put("kitabah", "print");
-        arabe.put("mutaghayir", "variable");
-        arabe.put("iradah", "echo");
-        arabe.put("tachrir", "report");
-        arabe.put("muzayadah", "sync");
-        dicionarioGlobal.put("arabe", arabe);
-        
-        // Dicionário Hindi -> Inglês (transliterado)
-        Map<String, String> hindi = new HashMap<>();
-        hindi.put("khoj", "scan");
-        hindi.put("sken", "deepscan");
-        hindi.put("daunlod", "download");
-        hindi.put("vishleshan", "analyze");
-        hindi.put("likho", "print");
-        hindi.put("char", "variable");
-        hindi.put("dikhao", "echo");
-        hindi.put("riport", "report");
-        hindi.put("synchronize", "sync");
-        dicionarioGlobal.put("hindi", hindi);
-        
-        // Dicionário Coreano -> Inglês (transliterado)
-        Map<String, String> coreano = new HashMap<>();
-        coreano.put("geomsaek", "scan");
-        coreano.put("seuken", "deepscan");
-        coreano.put("daunrodeu", "download");
-        coreano.put("bunseok", "analyze");
-        coreano.put("sseugi", "print");
-        coreano.put("byeonsu", "variable");
-        coreano.put("pyosi", "echo");
-        coreano.put("bogoseo", "report");
-        coreano.put("donggi", "sync");
-        dicionarioGlobal.put("coreano", coreano);
-    }
-    
-    private void carregarTraducoes() {
-        try {
-            Path arquivo = Path.of(ARQUIVO_TRADUCOES);
-            if (Files.exists(arquivo)) {
-                String conteudo = Files.readString(arquivo);
-                JsonObject obj = gson.fromJson(conteudo, JsonObject.class);
-                for (var entry : obj.entrySet()) {
-                    String idioma = entry.getKey();
-                    JsonObject dict = entry.getValue().getAsJsonObject();
-                    Map<String, String> mapa = new HashMap<>();
-                    for (var e : dict.entrySet()) {
-                        mapa.put(e.getKey(), e.getValue().getAsString());
-                    }
-                    dicionarioGlobal.put(idioma, mapa);
+
+    // ============================================================
+    // API pública
+    // ============================================================
+
+    /**
+     * Detecta o idioma dominante de um trecho de código.
+     */
+    public String detectarIdioma(String codigo) {
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        for (String idioma : dicionarios.keySet()) scores.put(idioma, 0);
+
+        String[] palavras = codigo.toLowerCase().split("[\\s;(){}\\[\\],\"']+");
+        for (String p : palavras) {
+            for (var entry : dicionarios.entrySet()) {
+                if (entry.getValue().containsKey(p)) {
+                    scores.merge(entry.getKey(), 1, Integer::sum);
                 }
-                System.out.println("[TRADUTOR] " + dicionarioGlobal.size() + " idiomas carregados.");
             }
-        } catch (Exception e) {
-            // Arquivo não existe, usa dicionário base
         }
+
+        idiomaDetectado = scores.entrySet().stream()
+            .max(Map.Entry.comparingByValue())
+            .map(Map.Entry::getKey)
+            .orElse("portugues");
+
+        return idiomaDetectado;
     }
-    
-    public void salvarTraducoes() {
+
+    /**
+     * Traduz uma linha de código para sintaxe v2 canônica.
+     */
+    public String traduzirLinha(String linha) {
+        return SimilarityTranslator.translateCommand(linha);
+    }
+
+    /**
+     * Traduz um bloco inteiro de código.
+     */
+    public String traduzirCodigo(String codigo) {
+        detectarIdioma(codigo);
+        StringBuilder sb = new StringBuilder();
+        for (String linha : codigo.split("\n")) {
+            sb.append(traduzirLinha(linha)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Adiciona traduções externas para um idioma.
+     */
+    public void adicionarTraducoes(String idioma, Map<String, String> traducoes) {
+        dicionarios.computeIfAbsent(idioma, k -> new LinkedHashMap<>()).putAll(traducoes);
         try {
-            JsonObject obj = new JsonObject();
-            for (var entry : dicionarioGlobal.entrySet()) {
-                JsonObject dict = new JsonObject();
-                for (var e : entry.getValue().entrySet()) {
-                    dict.addProperty(e.getKey(), e.getValue());
-                }
-                obj.add(entry.getKey(), dict);
-            }
-            Files.writeString(Path.of(ARQUIVO_TRADUCOES), gson.toJson(obj));
-        } catch (IOException e) {
-            System.err.println("Erro ao salvar traduções: " + e.getMessage());
-        }
+            Files.writeString(Path.of(ARQ_TRADUCOES), GSON.toJson(dicionarios));
+        } catch (IOException ignored) {}
     }
-    
-    public String detectarIdioma(String comando) {
-        String comandoLower = comando.toLowerCase().trim();
-        String primeiraPalavra = comandoLower.split(" ")[0];
-        
-        // Verifica se já está em inglês (comando nativo)
-        if (COMANDOS_PADRAO.containsValue(primeiraPalavra) || 
-            COMANDOS_PADRAO.containsKey(primeiraPalavra)) {
-            return "ingles";
+
+    public String getIdiomaDetectado() { return idiomaDetectado; }
+    public Set<String> getIdiomasSuportados() { return dicionarios.keySet(); }
+
+    public void listarIdiomas() {
+        System.out.println("[TradutorUniversal] Idiomas suportados:");
+        for (var entry : dicionarios.entrySet()) {
+            System.out.printf("  %-15s → %d palavras mapeadas%n", entry.getKey(), entry.getValue().size());
         }
-        
-        // Procura em todos os dicionários
-        for (var entry : dicionarioGlobal.entrySet()) {
-            if (entry.getValue().containsKey(primeiraPalavra)) {
-                this.idiomaDetectado = entry.getKey();
-                return entry.getKey();
-            }
-        }
-        
-        // Se não encontrou, tenta detectar por caracteres especiais
-        if (comando.matches(".*[\\u0600-\\u06FF].*")) return "arabe";
-        if (comando.matches(".*[\\u4E00-\\u9FFF].*")) return "chines";
-        if (comando.matches(".*[\\u3040-\\u309F\\u30A0-\\u30FF].*")) return "japones";
-        if (comando.matches(".*[\\uAC00-\\uD7AF].*")) return "coreano";
-        if (comando.matches(".*[\\u0400-\\u04FF].*")) return "russo";
-        if (comando.matches(".*[\\u0900-\\u097F].*")) return "hindi";
-        
-        return "portugues";
-    }
-    
-    public String traduzirComando(String comandoOriginal) {
-        String comandoLower = comandoOriginal.toLowerCase().trim();
-        String primeiraPalavra = comandoLower.split(" ")[0];
-        String resto = comandoLower.substring(primeiraPalavra.length()).trim();
-        
-        // Se já é inglês, mantém
-        if (COMANDOS_PADRAO.containsValue(primeiraPalavra)) {
-            return comandoOriginal;
-        }
-        
-        // Procura tradução
-        String traducao = null;
-        for (var dict : dicionarioGlobal.values()) {
-            if (dict.containsKey(primeiraPalavra)) {
-                traducao = dict.get(primeiraPalavra);
-                break;
-            }
-        }
-        
-        // Se não encontrou, mantém original (pode ser variável)
-        if (traducao == null) {
-            return comandoOriginal;
-        }
-        
-        // Reconstrói o comando traduzido
-        String comandoTraduzido = traducao;
-        if (!resto.isEmpty()) {
-            comandoTraduzido += " " + resto;
-        }
-        
-        // Substitui placeholders traduzidos
-        comandoTraduzido = traduzirParametros(comandoTraduzido);
-        
-        return comandoTraduzido;
-    }
-    
-    private String traduzirParametros(String comando) {
-        // Traduz parâmetros comuns
-        Map<String, String> parametros = new HashMap<>();
-        parametros.put("--profundidade", "--depth");
-        parametros.put("--formato", "--format");
-        parametros.put("--destino", "--dest");
-        
-        for (var entry : parametros.entrySet()) {
-            comando = comando.replace(entry.getKey(), entry.getValue());
-        }
-        
-        return comando;
-    }
-    
-    public void aprenderPalavra(String idioma, String palavraOriginal, String traducao) {
-        if (!dicionarioGlobal.containsKey(idioma)) {
-            dicionarioGlobal.put(idioma, new HashMap<>());
-        }
-        
-        dicionarioGlobal.get(idioma).put(palavraOriginal.toLowerCase(), traducao);
-        salvarTraducoes();
-        
-        System.out.println("[TRADUTOR] Nova palavra aprendida: " + palavraOriginal + " -> " + traducao);
-    }
-    
-    public void aprenderComContexto(String comandoOriginal, String comandoExecutado) {
-        String primeiraOriginal = comandoOriginal.toLowerCase().split(" ")[0];
-        String primeiraExecutado = comandoExecutado.toLowerCase().split(" ")[0];
-        
-        if (!primeiraOriginal.equals(primeiraExecutado) && 
-            !COMANDOS_PADRAO.containsKey(primeiraOriginal)) {
-            
-            String idioma = detectarIdioma(comandoOriginal);
-            aprenderPalavra(idioma, primeiraOriginal, primeiraExecutado);
-        }
-    }
-    
-    public String getIdiomaAtual() {
-        return this.idiomaDetectado;
-    }
-    
-    public void listarIdiomasSuportados() {
-        System.out.println("");
-        System.out.println("╔══════════════════════════════════════════════════════════╗");
-        System.out.println("║        IDIOMAS SUPORTADOS PELO TONACO SCRIPT             ║");
-        System.out.println("╚══════════════════════════════════════════════════════════╝");
-        System.out.println("");
-        
-        for (String idioma : dicionarioGlobal.keySet()) {
-            int numPalavras = dicionarioGlobal.get(idioma).size();
-            System.out.println("  • " + idioma.substring(0, 1).toUpperCase() + idioma.substring(1) + " (" + numPalavras + " palavras)");
-        }
-        
-        System.out.println("");
-        System.out.println("  → O sistema aprende novas palavras automaticamente!");
-        System.out.println("  → Programe em qualquer idioma, execute sem preocupação.");
-        System.out.println("");
-    }
-    
-    public String obterAjuda(String idioma) {
-        Map<String, String> dict = dicionarioGlobal.getOrDefault(idioma, dicionarioGlobal.get("portugues"));
-        
-        StringBuilder ajuda = new StringBuilder();
-        ajuda.append("\n");
-        ajuda.append("╔══════════════════════════════════════════════════════════╗\n");
-        ajuda.append("║              COMANDOS EM ").append(idioma.toUpperCase()).append("                  ║\n");
-        ajuda.append("╚══════════════════════════════════════════════════════════╝\n");
-        ajuda.append("\n");
-        
-        for (var entry : COMANDOS_PADRAO.entrySet()) {
-            String comandoOriginal = entry.getKey();
-            String comandoIngles = entry.getValue();
-            String traducao = dict.getOrDefault(comandoOriginal, comandoOriginal);
-            
-            ajuda.append("  • ").append(traducao).append(" → ").append(comandoIngles).append("\n");
-        }
-        
-        return ajuda.toString();
     }
 }
