@@ -20,6 +20,7 @@ public class TonacoScriptInterpreter {
     private static Map<String, String> config = new HashMap<>();
     private static List<String> output = new ArrayList<>();
     private static ExecutorService executor = Executors.newFixedThreadPool(10);
+    private static TradutorUniversal tradutor = new TradutorUniversal();
     
     public static void main(String[] args) {
         System.out.println("╔══════════════════════════════════════════════════════════════╗");
@@ -402,59 +403,29 @@ public class TonacoScriptInterpreter {
         
         System.out.println("\n✅ Execução concluída!");
     }
-     private static void executarComando(String comando, int linhaNum) {
+       private static void executarComando(String comandoOriginal, int linhaNum) {
         try {
+            // Detecta idioma e traduz
+            String idioma = tradutor.detectarIdioma(comandoOriginal);
+            String comando = tradutor.traduzirComando(comandoOriginal);
+            
+            if (!idioma.equals("ingles") && !comandoOriginal.equals(comando)) {
+                // Mostra tradução em modo debug (opcional)
+                // System.out.println("[DEBUG] " + idioma + " -> " + comando);
+            }
+            
             // Comando: buscar [url]
-            if (comando.startsWith("buscar ")) {
-                String url = comando.substring(7).trim();
+            if (comando.startsWith("scan ")) {
+                String url = comando.substring(5).trim();
                 autoBuscarArquivos(url);
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: github [repo]
-            else if (comando.startsWith("github ")) {
-                String repo = comando.substring(7).trim();
-                integrarGitHub(repo);
-                autoEvolucao.registrarUso(comando, true, 0);
-            }
-            
-            // Comando: escrever [texto]
-            else if (comando.startsWith("escrever ")) {
-                String texto = comando.substring(9).trim();
-                System.out.println(texto);
-                output.add(texto);
-                autoEvolucao.registrarUso(comando, true, 0);
-            }
-            
-            // Comando: variavel [nome] = [valor]
-            else if (comando.contains("=")) {
-                String[] partes = comando.split("=", 2);
-                String nomeVar = partes[0].trim();
-                String valor = partes[1].trim();
-                
-                // Remove aspas se tiver
-                if (valor.startsWith("\"") && valor.endsWith("\"")) {
-                    valor = valor.substring(1, valor.length() - 1);
-                }
-                variables.put(nomeVar, valor);
-                autoEvolucao.registrarUso(comando, true, 0);
-            }
-            
-            // Comando: imprimir [variavel]
-            else if (comando.startsWith("imprimir ")) {
-                String var = comando.substring(9).trim();
-                if (variables.containsKey(var)) {
-                    System.out.println(variables.get(var));
-                } else {
-                    System.out.println(var);
-                }
-                autoEvolucao.registrarUso(comando, true, 0);
-            }
-            
-            // Comando: scanear [url] --profundidade [n]
-            else if (comando.startsWith("scanear ")) {
-                String resto = comando.substring(8).trim();
-                String[] partes = resto.split("--profundidade");
+            // Comando: deepscan [url] --depth [n]
+            else if (comando.startsWith("deepscan ")) {
+                String resto = comando.substring(9).trim();
+                String[] partes = resto.split("--depth");
                 String url = partes[0].trim();
                 int profundidade = partes.length > 1 ? Integer.parseInt(partes[1].trim()) : 2;
                 
@@ -463,12 +434,13 @@ public class TonacoScriptInterpreter {
                 for (String link : links) {
                     System.out.println("   " + link);
                 }
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: baixar [url] [destino]
-            else if (comando.startsWith("baixar ")) {
-                String resto = comando.substring(7).trim();
+            // Comando: download [url] [destino]
+            else if (comando.startsWith("download ")) {
+                String resto = comando.substring(9).trim();
                 String[] partes = resto.split(" ");
                 String url = partes[0];
                 String destino = partes.length > 1 ? partes[1] : "download_" + System.currentTimeMillis();
@@ -479,55 +451,103 @@ public class TonacoScriptInterpreter {
                 } catch (Exception e) {
                     System.out.println("Erro ao baixar: " + e.getMessage());
                 }
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: analisar [url]
-            else if (comando.startsWith("analisar ")) {
-                String url = comando.substring(9).trim();
+            // Comando: analyze [url]
+            else if (comando.startsWith("analyze ")) {
+                String url = comando.substring(8).trim();
                 analisarSite(url);
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: relatorio [formato]
-            else if (comando.startsWith("relatorio ")) {
-                String formato = comando.substring(10).trim();
+            // Comando: github [repo]
+            else if (comando.startsWith("github ")) {
+                String repo = comando.substring(7).trim();
+                integrarGitHub(repo);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
+            }
+            
+            // Comando: report [formato]
+            else if (comando.startsWith("report ")) {
+                String formato = comando.substring(7).trim();
                 gerarRelatorio(formato);
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // ============================================================
-            // NOVOS COMANDOS DE AUTO-EVOLUCAO
-            // ============================================================
+            // Comando: print [texto]
+            else if (comando.startsWith("print ")) {
+                String texto = comando.substring(6).trim();
+                System.out.println(texto);
+                output.add(texto);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
+            }
             
-            // Comando: sincronizar
-            else if (comando.equals("sincronizar")) {
+            // Comando: variable [nome] = [valor]
+            else if (comando.contains("=")) {
+                String[] partes = comando.split("=", 2);
+                String nomeVar = partes[0].trim();
+                // Remove a palavra "variable" se existir
+                if (nomeVar.startsWith("variable ")) {
+                    nomeVar = nomeVar.substring(9).trim();
+                }
+                String valor = partes[1].trim();
+                
+                if (valor.startsWith("\"") && valor.endsWith("\"")) {
+                    valor = valor.substring(1, valor.length() - 1);
+                }
+                variables.put(nomeVar, valor);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
+            }
+            
+            // Comando: echo [variavel]
+            else if (comando.startsWith("echo ")) {
+                String var = comando.substring(5).trim();
+                if (variables.containsKey(var)) {
+                    System.out.println(variables.get(var));
+                } else {
+                    System.out.println(var);
+                }
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
+            }
+            
+            // Comando: sync
+            else if (comando.equals("sync")) {
                 autoEvolucao.sincronizarComandos();
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: criar_comando [nome] [descricao] [acao]
-            else if (comando.startsWith("criar_comando ")) {
-                String resto = comando.substring(14).trim();
+            // Comando: create_command [nome] [descricao] [acao]
+            else if (comando.startsWith("create_command ")) {
+                String resto = comando.substring(16).trim();
                 String[] partes = resto.split(" ", 3);
                 if (partes.length >= 3) {
                     autoEvolucao.compartilharComando(partes[0], partes[1], partes[2]);
                 } else {
-                    System.out.println("Uso: criar_comando [nome] [descricao] [acao]");
-                    System.out.println("Exemplo: criar_comando ping \"Verifica site\" analisar https://exemplo.com");
+                    System.out.println("Uso: create_command [nome] [descricao] [acao]");
                 }
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: compartilhar [nome]
-            else if (comando.startsWith("compartilhar ")) {
-                String nome = comando.substring(12).trim();
+            // Comando: share [nome]
+            else if (comando.startsWith("share ")) {
+                String nome = comando.substring(6).trim();
                 autoEvolucao.compartilharComComunidade(nome);
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: relatorio_evolucao
-            else if (comando.equals("relatorio_evolucao")) {
+            // Comando: evolution_report
+            else if (comando.equals("evolution_report")) {
                 String relatorio = autoEvolucao.gerarRelatorioEvolucao();
                 System.out.println(relatorio);
                 try {
@@ -536,42 +556,59 @@ public class TonacoScriptInterpreter {
                 } catch (Exception e) {
                     System.out.println("Erro ao salvar relatorio: " + e.getMessage());
                 }
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: recomendar
-            else if (comando.equals("recomendar")) {
+            // Comando: recommend
+            else if (comando.equals("recommend")) {
                 autoEvolucao.recomendarComandos();
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
             }
             
-            // Comando: comandos
-            else if (comando.equals("comandos")) {
+            // Comando: commands
+            else if (comando.equals("commands")) {
                 autoEvolucao.listarComandos();
-                autoEvolucao.registrarUso(comando, true, 0);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                tradutor.aprenderComContexto(comandoOriginal, comando);
+            }
+            
+            // Comando: idiomas (NOVO - lista idiomas suportados)
+            else if (comando.equals("idiomas") || comando.equals("languages")) {
+                tradutor.listarIdiomasSuportados();
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
+            }
+            
+            // Comando: ajuda [idioma] (NOVO)
+            else if (comando.startsWith("ajuda ") || comando.startsWith("help ")) {
+                String[] partes = comando.split(" ");
+                String lang = partes.length > 1 ? partes[1] : tradutor.getIdiomaAtual();
+                String ajuda = tradutor.obterAjuda(lang);
+                System.out.println(ajuda);
+                autoEvolucao.registrarUso(comandoOriginal, true, 0);
             }
             
             // ============================================================
             // COMANDOS PERSONALIZADOS (FALLBACK)
             // ============================================================
             else {
-                // Tenta executar como comando personalizado
                 String primeiro = comando.split(" ")[0];
                 String parametros = comando.substring(primeiro.length()).trim();
                 if (autoEvolucao.executarComandoPersonalizado(primeiro, parametros)) {
-                    autoEvolucao.registrarUso(comando, true, 0);
+                    autoEvolucao.registrarUso(comandoOriginal, true, 0);
+                    tradutor.aprenderComContexto(comandoOriginal, comando);
                 } else {
-                    System.out.println("Linha " + linhaNum + ": Comando desconhecido: " + comando);
-                    autoEvolucao.registrarUso(comando, false, 0);
+                    System.out.println("Linha " + linhaNum + ": Comando desconhecido: " + comandoOriginal);
+                    autoEvolucao.registrarUso(comandoOriginal, false, 0);
                 }
             }
             
         } catch (Exception e) {
             System.out.println("Erro na linha " + linhaNum + ": " + e.getMessage());
-            autoEvolucao.registrarUso(comando, false, 0);
+            autoEvolucao.registrarUso(comandoOriginal, false, 0);
         }
     }
-    
        private static void analisarSite(String url) {
         System.out.println("Analisando site: " + url);
         
