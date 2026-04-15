@@ -1,26 +1,39 @@
-// config.tns - Configuração da linguagem TONACO SCRIPT
+// config.tns — Configuração padrão do TONACO SCRIPT v2.0
+// Este arquivo define os parâmetros globais da linguagem
+// Criado por: Guilherme Lucas Tonaco Carvalho
 
-# CONFIGURAÇÕES GLOBAIS
-config timeout = 5000
-config max_threads = 20
-config user_agent = "TONACO-SCRIPT/1.0"
+// === Parâmetros de rede ===
+let timeout      = 5000
+let max_threads  = 20
+let user_agent   = "TONACO-SCRIPT/2.0"
+let max_depth    = 3
+let follow_redirects = verdadeiro
 
-# EXTENSÕES PARA BUSCAR
-extensoes = [
-    ".php", ".jsp", ".asp", ".aspx", ".html", ".htm",
-    ".js", ".css", ".xml", ".json", ".txt", ".log",
-    ".sql", ".bak", ".zip", ".tar", ".gz", ".java",
-    ".py", ".rb", ".go", ".c", ".cpp", ".class", ".jar"
-]
+// === Extensões monitoradas ===
+// (usadas pelo scanner ao executar scan/deepscan)
+// .php .jsp .asp .aspx .html .htm
+// .js .css .xml .json .txt .log
+// .sql .bak .zip .tar .gz
+// .java .py .rb .go .c .cpp
+// .class .jar .war .ear
+// .properties .yml .yaml .md
 
-# DIRETÓRIOS COMUNS
-diretorios = [
-    "", "/admin", "/backup", "/temp", "/logs", "/config",
-    "/WEB-INF", "/api", "/v1", "/old", "/download", "/files"
-]
+// === Diretórios monitorados ===
+// / /admin /backup /temp /logs /config
+// /WEB-INF /api /v1 /old /download /files
+// /uploads /images /css /js /lib
 
-# PALAVRAS SENSÍVEIS
-palavras_sensiveis = [
-    "password", "secret", "key", "token", "api_key",
-    "database", "db", "backup", "dump", "credential"
-]
+// === Palavras sensíveis para detecção ===
+// password secret key token api_key
+// database db backup dump credential
+// private auth login admin
+
+// === Relatórios ===
+let report_format    = "html"
+let report_dir       = "./relatorios"
+let save_report      = verdadeiro
+
+print "[config.tns] Configurações carregadas."
+print "  user_agent:  " + user_agent
+print "  max_threads: " + max_threads
+print "  max_depth:   " + max_depth
