@@ -1,0 +1,8 @@
+# sintaxe v1 pura — deve funcionar no compilador v2
+escrever "Testando compatibilidade v1 no compilador v2"
+variavel site = "https://tonaco.cyber"
+escrever "Site: " + site
+buscar site
+analisar site
+relatorio html
+escrever "Compatibilidade v1 OK!"

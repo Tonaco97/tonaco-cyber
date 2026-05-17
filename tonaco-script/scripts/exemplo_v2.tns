@@ -1,0 +1,22 @@
+// exemplo_v2.tns — Demonstracao da sintaxe v2
+let nome = "TONACO SCRIPT"
+let versao = 2
+
+print "Bem-vindo ao " + nome + " versao " + versao
+
+let i = 0
+while (i < 3) {
+    print "  loop " + i
+    i = i + 1
+}
+
+function somar(a, b) {
+    return a + b
+}
+
+let resultado = somar(10, 32)
+print "somar(10, 32) = " + resultado
+
+scan "https://exemplo.com"
+analyze "https://exemplo.com"
+report json
